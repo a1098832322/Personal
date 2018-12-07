@@ -1,23 +1,35 @@
-package com.dsw.zfjd.utils;
+package com.dsw.iot.utils;
 
-import com.dsw.zfjd.config.StringConstant;
-import com.dsw.zfjd.utils.exception.BizException;
+
+import com.dsw.iot.config.StringConstant;
+import com.dsw.iot.utils.exception.BizException;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.poi.ss.usermodel.BorderStyle;
-import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.hssf.usermodel.DVConstraint;
+import org.apache.poi.hssf.usermodel.HSSFDataValidation;
+import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
+import org.apache.poi.xssf.streaming.SXSSFRow;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
-import org.apache.poi.xssf.usermodel.XSSFRow;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.hibernate.validator.constraints.NotBlank;
+import org.apache.poi.xssf.usermodel.XSSFDataValidation;
+import org.apache.poi.xssf.usermodel.XSSFDataValidationConstraint;
+import org.apache.poi.xssf.usermodel.XSSFDataValidationHelper;
+import org.eclipse.sisu.Nullable;
 
+import javax.validation.constraints.NotNull;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * @Auther:郑龙
+ * @author 郑龙
  * @Date:2018-10-08 14:39
  * @Description:一个提供将数据导出为Excel格式数据表的工具类<br> <B>方法说明：</B><br>
  * <li>使用builder方法构造，按需要选择输出参数。其中大标题和主体数据不能为null</li>
@@ -29,9 +41,14 @@ public class DataExporter {
     /**
      * 工作簿
      */
-    private XSSFWorkbook wb;
+    private SXSSFWorkbook wb;
 
-    public XSSFWorkbook getWb() {
+    /**
+     * 获得工作簿
+     *
+     * @return SXSSFWorkbook 构造完成的xlsx工作簿数据
+     */
+    public SXSSFWorkbook getWb() {
         return wb;
     }
 
@@ -45,18 +62,40 @@ public class DataExporter {
     }
 
     /**
+     * 将表格文件转换为InputStream输出下载
+     *
+     * @param workbook 数据表
+     * @return
+     */
+    public static InputStream excelToInputStream(SXSSFWorkbook workbook) {
+        InputStream in = null;
+        try {
+            //临时
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            //创建临时文件
+            workbook.write(out);
+            byte[] bookByteAry = out.toByteArray();
+            in = new ByteArrayInputStream(bookByteAry);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return in;
+    }
+
+
+    /**
      * 内部构造类
      */
     public static abstract class Builder {
         /**
          * 工作簿
          */
-        private XSSFWorkbook wb = null;
+        private SXSSFWorkbook wb = null;
 
         /**
          * 主sheet
          */
-        private XSSFSheet sheet = null;
+        private SXSSFSheet sheet = null;
 
         /**
          * 表格大标题（通常用于表示下载于哪个版块：eg.接处警问题、强制措施问题  等）
@@ -69,12 +108,12 @@ public class DataExporter {
         private String[] colTitles = new String[20];
 
         /**
-         * 有多少行
+         * 默认有多少行
          */
         private int rows = 3;
 
         /**
-         * 有多少列
+         * 默认有多少列
          */
         private int columns = 20;
 
@@ -83,15 +122,25 @@ public class DataExporter {
          */
         private List mData = new ArrayList<>();
 
+        /**
+         * 需要修改的sheet的索引号
+         */
+        private int sheetIndex = 0;
+
+        /**
+         * 需要修改的sheet名字
+         */
+        private String sheetName = "";
+
         /**********************************
          *             getter             *
          * ********************************/
 
-        public XSSFWorkbook getWb() {
+        public SXSSFWorkbook getWb() {
             return this.wb;
         }
 
-        public XSSFSheet getSheet() {
+        public SXSSFSheet getSheet() {
             return this.sheet;
         }
 
@@ -111,25 +160,58 @@ public class DataExporter {
         /**
          * 默认初始化方法
          *
-         * @return
+         * @return Builder
          */
         public Builder initSheet() {
-            wb = new XSSFWorkbook();
+            //设置允许在创建时访问的工作簿表格大小，默认为100，
+            // 超过100时从最小的开始，row将不可访问，当设置为-1时表示在创建表时允许所有row可读
+            wb = new SXSSFWorkbook(-1);
+            return this;
+        }
+
+        /**
+         * 使用一份已有的数据表初始化表单构造器
+         *
+         * @param wb 源工作簿
+         * @return Builder
+         */
+        public Builder initSheet(SXSSFWorkbook wb) {
+            this.wb = wb;
             return this;
         }
 
         /**
          * 传参初始化一步到位的方法
          *
-         * @param title
-         * @param data
-         * @param columnTitle
-         * @return
+         * @param title       主表标题
+         * @param data        数据源
+         * @param columnTitle 二级标题
+         * @return Builder
          */
-        public Builder initSheet(@NotBlank(message = "导出表格所属板块大标题不能为null") String title
-                , @NotBlank(message = "数据数组不能为null值") List data
+        public Builder initSheet(@NotNull(message = "导出表格所属板块大标题不能为null") String title
+                , @NotNull(message = "数据数组不能为null值") List data
                 , String... columnTitle) throws BizException {
-            wb = new XSSFWorkbook();
+            wb = new SXSSFWorkbook(-1);
+            this.setTitle(title);
+            this.setData(data);
+            this.setColumnTitles(columnTitle);
+            return this;
+        }
+
+        /**
+         * 将表格文件写入多个sheet时调用此方法构造。
+         *
+         * @param sxssfWorkbook 源表单数据
+         * @param title         主表标题
+         * @param data          数据源
+         * @param columnTitle   二级标题
+         * @return Builder
+         */
+        public Builder initSheet(@NotNull(message = "要写入的xls表单") SXSSFWorkbook sxssfWorkbook
+                , @NotNull(message = "导出表格所属板块大标题不能为null") String title
+                , @NotNull(message = "数据数组不能为null值") List data
+                , String... columnTitle) throws BizException {
+            wb = sxssfWorkbook;
             this.setTitle(title);
             this.setData(data);
             this.setColumnTitles(columnTitle);
@@ -158,6 +240,37 @@ public class DataExporter {
             return this;
         }
 
+        /**
+         * 设置单元格枚举值(针对单个单元格)
+         *
+         * @param firstRow 开始行
+         * @param endRow   结束行
+         * @param firstCol 开始列
+         * @param endCol   结束列
+         * @param values   枚举值
+         * @return Builder
+         */
+        public Builder setEnumCellValues(int firstRow, int endRow, int firstCol,
+                                         int endCol, String... values) {
+            DataValidationHelper dvHelper = sheet.getDataValidationHelper();
+            CellRangeAddressList addressList = new CellRangeAddressList(firstRow
+                    , endRow, firstCol, endCol);
+            DataValidationConstraint dvConstraint = dvHelper
+                    .createExplicitListConstraint(values);
+            DataValidation validation = dvHelper.createValidation(
+                    dvConstraint, addressList);
+            //处理Excel兼容性问题
+            if (validation instanceof XSSFDataValidation) {
+                validation.setSuppressDropDownArrow(true);
+                validation.setShowErrorBox(true);
+            } else {
+                validation.setSuppressDropDownArrow(false);
+            }
+            sheet.addValidationData(validation);
+
+            return this;
+        }
+
 
         /**
          * 设置大标题
@@ -171,6 +284,48 @@ public class DataExporter {
             } else {
                 throw new BizException(StringConstant.MAIN_TITLE_CANT_BE_NULL);
             }
+            return this;
+        }
+
+
+        /**
+         * 设置sheet的名字
+         *
+         * @param sheetName sheet名
+         * @return
+         */
+        public Builder setSheetName(@Nullable String sheetName) {
+            this.sheetName = "";//初始化
+            if (StringUtils.isNotBlank(sheetName)) {
+                //获取当前sheet索引
+                int index = 0;
+                try {
+                    index = wb.getNumberOfSheets();
+                    this.sheetIndex = index;
+                } catch (Exception e) {
+                    this.sheetIndex = 0;
+                }
+
+                this.sheetName = sheetName;
+            }
+            return this;
+        }
+
+        /**
+         * 设置指定索引的sheet的名字
+         *
+         * @param index     sheet索引
+         * @param sheetName sheet名
+         * @return
+         */
+        public Builder setSheetName(int index, String sheetName) {
+            this.sheetName = "";//初始化
+            //设置sheet名
+            if (StringUtils.isNotBlank(sheetName)) {
+                this.sheetIndex = index;
+                this.sheetName = sheetName;
+            }
+
             return this;
         }
 
@@ -215,7 +370,7 @@ public class DataExporter {
             //创建一个sheet
             sheet = wb.createSheet();
             // 创建单元格样式
-            XSSFCellStyle style = wb.createCellStyle();
+            CellStyle style = wb.createCellStyle();
             style.setAlignment(XSSFCellStyle.ALIGN_CENTER); //文字水平居中
             style.setVerticalAlignment(XSSFCellStyle.VERTICAL_CENTER);//文字垂直居中
             style.setBorderBottom(BorderStyle.THIN); //底边框加黑
@@ -237,7 +392,7 @@ public class DataExporter {
                 //合并单元格显示标题
                 sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, columns - 1));
                 //填入数据
-                XSSFRow row = sheet.getRow(0); //获取第一行
+                SXSSFRow row = sheet.getRow(0); //获取第一行
                 row.getCell(0).setCellValue(mTitle); //在第一行中创建并写入title
             } else {
                 //为单元格添加背景样式
@@ -250,7 +405,7 @@ public class DataExporter {
             }
 
             //获取第二行，为每一列添加字段
-            XSSFRow row1 = sheet.getRow(1);
+            SXSSFRow row1 = sheet.getRow(1);
 
             //填充二级小标题头,若为空则显示默认列名
             for (int i = 0; i < columns; i++) {
@@ -258,9 +413,22 @@ public class DataExporter {
                 row1.getCell(i).setCellValue(Optional.ofNullable(colTitles).map(title -> colTitles[index]).orElse("Column " + String.valueOf(i)));
             }
 
+            //获得总列数  设置列宽为25个字符宽度
+            int coloumNum = sheet.getRow(1).getPhysicalNumberOfCells();
+            for (int i = 0; i < coloumNum; i++)
+                sheet.setColumnWidth(i, 25 * 256);
+
             return this;
         }
 
+        /**
+         * 修改sheet名(如果有)
+         */
+        private void changeSheetName() {
+            if (StringUtils.isNotBlank(this.sheetName)) {
+                this.wb.setSheetName(this.sheetIndex, this.sheetName);
+            }
+        }
 
         /**
          * 使用抽象方法，方便后续自己自由填充表格数据
@@ -270,11 +438,12 @@ public class DataExporter {
         /**
          * 返回构造出来的对象
          *
-         * @return
+         * @return DataExporter
          */
         public DataExporter build() {
             this.setStyle();//绘制表格框架
             this.writeData();//填充表格数据
+            this.changeSheetName();//修改sheet名称（如果有）
             return new DataExporter(this);
         }
 
