@@ -1,8 +1,8 @@
 # Log工具类
 ##### Rqeuired 
 * JDK 1.7  
-* Rqeuired Springboot
-* Required Alibaba FastJson
+* Springboot
+* Alibaba FastJson
 
 >基于Springboot的AOP实现，面向切面记录各Controller或者Service的操作。
 >配置好相应的依赖包，文件放进项目中，再修改切入的包名或者类文件名，即可完成Log
