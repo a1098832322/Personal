@@ -1,6 +1,8 @@
 package com.dsw.aop.utils;
 
 
+import org.apache.commons.collections4.CollectionUtils;
+
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -94,6 +96,78 @@ public class ListUtil {
      */
     public static <T> List<T> filter(List<T> originList, Predicate<T> predicate) {
         return originList.stream().filter(predicate).collect(Collectors.toList());
+    }
+
+    /**
+     * 排序，可以使目标item固定在列首或列尾
+     *
+     * @param originList 原始数据列
+     * @param fixedItem  固定的item
+     * @param comparator 自定义比较器
+     * @param isStart    固定元素是否在开头
+     * @param <T>        模板类型
+     * @return 排序后的list
+     */
+    public static <T> List<T> sort(List<T> originList, List<T> fixedItem
+            , Comparator<T> comparator, boolean isStart) {
+        //校验原始数据列
+        ValidateUtil.validateParams(new BaseChainExecutor(), originList);
+
+        //声明返回List
+        List<T> newArray = new ArrayList<>();
+        //对原始数据集进行copy
+        List<T> originListCopy = new LinkedList<>(originList);
+
+        //先从原始列表中移除
+        if (CollectionUtils.isNotEmpty(fixedItem)) {
+            originListCopy.removeIf(fixedItem::contains);
+        }
+
+        //排序并返回
+        if (isStart) {
+            //将固定元素排到列前
+            if (CollectionUtils.isNotEmpty(fixedItem)) {
+                newArray.addAll(fixedItem);
+            }
+            //后续元素默认升序排列
+            newArray.addAll(originListCopy.stream().sorted(comparator).collect(Collectors.toList()));
+        } else {
+            //后续元素默认升序排列
+            newArray.addAll(originListCopy.stream().sorted(comparator).collect(Collectors.toList()));
+            //将固定元素排到列尾
+            if (CollectionUtils.isNotEmpty(fixedItem)) {
+                newArray.addAll(fixedItem);
+            }
+        }
+        return newArray;
+    }
+
+    /**
+     * 根据一定条件，拆分List符合裂项条件的元素，并扩充list
+     *
+     * @param originList 原始数据集
+     * @param predicate  裂项条件
+     * @param function   对符合列项条件的元素进行操作的方法
+     * @param <T>        模板类型
+     * @return 裂项并扩容后的list
+     */
+    public static <T, R> List<T> split(List<T> originList, Predicate<T> predicate
+            , Function<T, R> function) {
+        //拷贝一份List进行遍历
+        List<T> originListCopy = new LinkedList<>(originList);
+
+        //遍历
+        originListCopy.forEach(t -> {
+            if (predicate.test(t)) {
+                //从原始列表中remove掉原始元素
+                originList.remove(t);
+                function.apply(t);
+
+            }
+        });
+
+        //返回处理后的List
+        return originList;
     }
 
 }
