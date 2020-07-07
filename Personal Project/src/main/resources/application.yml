@@ -1,0 +1,8 @@
+#端口
+server:
+  port: 9996
+
+#名称
+spring:
+  application:
+    name: Person Project
