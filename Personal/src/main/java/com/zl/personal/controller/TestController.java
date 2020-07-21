@@ -1,7 +1,7 @@
 package com.zl.personal.controller;
 
 import com.zl.personal.dto.TestDto;
-import com.zl.personal.utils.AutoBoxingUtil;
+import com.zl.personal.utils.support.AutoBoxingUtil;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.web.bind.annotation.GetMapping;
