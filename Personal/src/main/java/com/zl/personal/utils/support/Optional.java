@@ -151,6 +151,22 @@ public class Optional<T> {
         return isPresent() ? value : supplier.get();
     }
 
+    /**
+     * 自定义抛出的异常值
+     *
+     * @param supplier    {@link Supplier}
+     * @param <throwable> {@link Throwable}
+     * @return value or throws throwable
+     * @throws throwable Throwable
+     */
+    public <throwable extends Throwable> T orElseThrow(Supplier<throwable> supplier) throws throwable {
+        if (isPresent()) {
+            return value;
+        } else {
+            throw supplier.get();
+        }
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {
